@@ -11,8 +11,6 @@
 #include "LNCFHandler.h"
 #include "LNCFMessage.h"
 
-#define KEY_LENGTH 128/8
-
 #define MAX_LENGTH 65507
 
 namespace lncf {
@@ -33,11 +31,13 @@ namespace lncf {
 		void RegisterService();
 
 		void Handle(std::string topic, LNCFHandler* handler);
+		void RemoveHandler(std::string topic, LNCFHandler* handler);
 
 		std::string RegisterEncryptionKey(unsigned char* key);
+		void RemoveEncryptionKey(std::string& keyFingerprint);
 
 	private:
-		std::unordered_map<std::string, LNCFHandler*> _handlers;
+		std::unordered_map<std::string, std::vector<LNCFHandler*>*> _handlers;
 		boost::asio::io_service* _service;
 
 		boost::asio::ip::address _send_addr;
@@ -56,7 +56,8 @@ namespace lncf {
 		void handle_receive_from(boost::system::error_code error, size_t bytes_recvd);
 
 		void parse_lncf_v1(size_t packet_size);
-		
+
+		void handle_message_v1(unsigned char* packet, size_t packet_length);
 	};
 }
 

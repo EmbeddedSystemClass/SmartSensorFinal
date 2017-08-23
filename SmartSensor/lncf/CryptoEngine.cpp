@@ -73,7 +73,7 @@ namespace lncf {
 		}
 	}
 
-	std::tuple<byte*, size_t> CryptoEngine::Encrypt(byte* message, size_t message_size, std::string& keyFingerprint, unsigned char* iv)
+	std::tuple<byte*, size_t> CryptoEngine::AESEncrypt(byte* message, size_t message_size, std::string& keyFingerprint, unsigned char* iv)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
 			throw std::exception("Key unknown");
@@ -90,7 +90,12 @@ namespace lncf {
 		return std::make_tuple(output, message_size);
 	}
 
-	std::tuple<byte*, size_t> CryptoEngine::Decrypt(byte* message, size_t message_size, std::string& keyFingerprint, byte* iv)
+	std::tuple<std::string, std::string> CryptoEngine::LNCFEncrypt(byte* packet, size_t packet_size)
+	{
+			
+	}
+
+	std::tuple<byte*, size_t> CryptoEngine::AESDecrypt(byte* message, size_t message_size, std::string& keyFingerprint, byte* iv)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
 			throw std::exception("Key unknown");
@@ -103,6 +108,47 @@ namespace lncf {
 		return std::make_tuple(output,message_size);
 	}
 
+	std::tuple<bool, byte*, size_t> CryptoEngine::LNCFDecrypt(byte* packet, size_t packet_size)
+	{
+		std::string keyFingerprint((char*)packet, KEY_FINGERPRINT_SIZE);
+		try
+		{
+			if (VerifyHMAC256(keyFingerprint, packet, packet_size)) {
+				byte* msgKey = new byte[MSG_KEY_SIZE];
+				memcpy_s(msgKey, MSG_KEY_SIZE, packet + KEY_FINGERPRINT_SIZE, MSG_KEY_SIZE);
+	
+				byte* aesKey = new byte[KEY_LENGTH];
+				byte* aesIV = new byte[CryptoPP::AES::BLOCKSIZE];
+				std::tie(aesKey,aesIV) = LNCF_KDF(msgKey, MSG_KEY_SIZE, keyFingerprint);
+	
+				byte* clear;
+				size_t msgSize;
+				std::tie(clear,msgSize) = AESDecrypt(packet + KEY_FINGERPRINT_SIZE + MSG_KEY_SIZE, 
+													packet_size - KEY_FINGERPRINT_SIZE - MSG_KEY_SIZE - CryptoPP::SHA256::DIGESTSIZE,
+													keyFingerprint,
+													aesIV);
+	
+				delete[] msgKey;
+				delete[]aesKey;
+				delete[]aesIV;
+
+				if (msgSize > 3) {
+					int16_t data_length = (((int16_t)clear[0]) & 0x00FF) << 8 | (((int16_t)clear[1]) & 0x00FF);
+					return std::make_tuple(true, clear + 2 + (msgSize - data_length), data_length);
+				}
+			}
+			else {
+				return std::make_tuple(false, nullptr, 0);
+			}
+		}
+		catch (std::exception e)
+		{
+			return std::make_tuple(false, nullptr, 0);
+		}
+
+		return std::make_tuple(false, nullptr, 0);
+	}
+
 	int32_t CryptoEngine::CRC32(byte* message, size_t message_size)
 	{
 		int32_t crc32_hash;
@@ -110,29 +156,55 @@ namespace lncf {
 		return crc32_hash;
 	}
 
-	std::tuple<byte*, size_t> CryptoEngine::SHA1(byte* message, size_t message_size)
+	byte* CryptoEngine::SHA1(byte* message, size_t message_size)
 	{
 		byte* output = new byte[CryptoPP::SHA1::DIGESTSIZE];
 		CryptoPP::SHA1().CalculateDigest(output, message, message_size);
-		return std::make_tuple(output, CryptoPP::SHA1::DIGESTSIZE);
+		return output;
 	}
 
-	std::tuple<byte*, size_t> CryptoEngine::SHA256(byte* message, size_t message_size)
+	byte* CryptoEngine::SHA256(byte* message, size_t message_size)
 	{
 		byte* output = new byte[CryptoPP::SHA256::DIGESTSIZE];
 		CryptoPP::SHA256().CalculateDigest(output, message, message_size);
-		return std::make_tuple(output, CryptoPP::SHA256::DIGESTSIZE);
+		return output;
 	}
 
-	std::tuple<byte*, size_t> CryptoEngine::HMAC256(std::string& keyFingerprint, byte* message, size_t message_size)
+	byte* CryptoEngine::HMAC256(std::string& keyFingerprint, byte* message, size_t message_size)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
 			throw std::exception("Key unknown");
 		}
+
 		byte* output = new byte[CryptoPP::SHA256::DIGESTSIZE];
 		CryptoPP::HMAC<CryptoPP::SHA256> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
-		hmac.CalculateDigest(output, message, message_size);
-		return std::make_tuple(output, CryptoPP::SHA256::DIGESTSIZE);
+
+		CryptoPP::ArraySource ss2(message,message_size, true,
+			new CryptoPP::HashFilter(hmac,
+				new CryptoPP::ArraySink(output, CryptoPP::SHA256::DIGESTSIZE)
+			) // HashFilter      
+		); // StringSource
+
+		return output;
+	}
+
+	bool CryptoEngine::VerifyHMAC256(std::string& keyFingerprint, byte* message, size_t message_size)
+	{
+		if (_keys.find(keyFingerprint) == _keys.end()) {
+			throw std::exception("Key unknown");
+		}
+
+		CryptoPP::HMAC<CryptoPP::SHA256> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
+
+		bool result = false;
+		CryptoPP::ArraySource ss(message, message_size, true,
+			new CryptoPP::HashVerificationFilter(hmac,
+				new CryptoPP::ArraySink((byte*)&result, sizeof(result)),
+				CryptoPP::HashVerificationFilter::PUT_RESULT | CryptoPP::HashVerificationFilter::HASH_AT_END
+			) // HashVerificationFilter
+		); // StringSource
+
+		return result;
 	}
 
 	std::tuple<byte*, size_t> CryptoEngine::Base64Encrypt(byte* message, size_t message_size)
@@ -167,4 +239,9 @@ namespace lncf {
 		return std::make_tuple(nullptr,-1);
 	}
 
+	std::tuple<byte*, byte*> CryptoEngine::LNCF_KDF(byte* messageKey, size_t messageKeySize, std::string& keyFingerprint)
+	{
+
+		return std::make_tuple(nullptr, nullptr);
+	}
 }

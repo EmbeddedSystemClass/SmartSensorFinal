@@ -26,6 +26,14 @@ namespace lncf {
 		if (_socket != nullptr) {
 			delete _socket;
 		}
+
+		//Clear the handlers list
+		for (std::pair<std::string,std::vector<LNCFHandler*>*> keyPair : _handlers) {
+			if (keyPair.second != nullptr) {
+				delete keyPair.second;
+			}
+			_handlers.erase(keyPair.first);
+		}
 	}
 
 	void LNCF::Init(boost::asio::ip::address listen_address, boost::asio::ip::address group_address, int lncf_port /*= 6666*/)
@@ -111,16 +119,28 @@ namespace lncf {
 
 	void LNCF::Handle(std::string topic, LNCFHandler* handler)
 	{
-		if (_handlers.find(topic) != _handlers.end()) {
-			throw std::exception("Topic already handle");
+		if (_handlers.find(topic) == _handlers.end()) {
+			_handlers[topic] = new std::vector<LNCFHandler*>();
 		}
 
-		_handlers[topic] = handler;
+		_handlers[topic]->push_back(handler);
+	}
+
+	void LNCF::RemoveHandler(std::string topic, LNCFHandler* handler)
+	{
+		if (_handlers.find(topic) != _handlers.end()) {
+			_handlers[topic]->erase(std::remove(_handlers[topic]->begin(), _handlers[topic]->end(), handler), _handlers[topic]->end());
+		}
 	}
 
 	std::string LNCF::RegisterEncryptionKey(unsigned char* key)
 	{
 		return CryptoEngine::RegisterKey(key, KEY_LENGTH);
+	}
+
+	void LNCF::RemoveEncryptionKey(std::string& keyFingerprint)
+	{
+		CryptoEngine::UnregisterKey(keyFingerprint);
 	}
 
 	void LNCF::handle_receive_from(boost::system::error_code error, size_t bytes_recvd)
@@ -157,6 +177,16 @@ namespace lncf {
 		if ((_data[0] & 0b00000010) == 2) {
 			//Encrypted message
 			int16_t data_length = (((int16_t)_data[1]) & 0x00FF) << 8 | (((int16_t)_data[2]) & 0x00FF);
+			byte* packet;
+			size_t packetLength;
+			bool isOK = false;
+
+			std::tie(isOK, packet,packetLength) = CryptoEngine::LNCFDecrypt((byte*)_data + 3, data_length);
+
+			if (isOK) {
+				handle_message_v1(packet, packetLength);
+				delete[] packet;
+			}
 
 		}
 		else if ((_data[0] & 0b00000001) == 1) {
@@ -164,15 +194,24 @@ namespace lncf {
 		}
 		else if ((_data[0] & 0b00011111) == 0) {
 			//Data message
-			int16_t topic_length = _data[1];
-			std::string topic(_data + 2, (size_t)topic_length);
-			int16_t data_length = (((int16_t)_data[2 + topic_length]) & 0x00FF) << 8 | (((int16_t)_data[2 + topic_length + 1]) & 0x00FF);
-			std::string data(_data + 2 + topic_length + 2, data_length);
-			std::unordered_map<std::string, LNCFHandler*>::const_iterator h = _handlers.find(topic);
-			if (h != _handlers.end()) {
-				h->second->Handle(topic, data);
-			}
+			handle_message_v1((unsigned char*)_data, packet_size);
+		}
+	}
 
+	void LNCF::handle_message_v1(unsigned char* packet, size_t packet_length)
+	{
+		int16_t topic_length = packet[1];
+		std::string topic((char*)packet + 2, (size_t)topic_length);
+		int16_t data_length = (((int16_t)packet[2 + topic_length]) & 0x00FF) << 8 | (((int16_t)packet[2 + topic_length + 1]) & 0x00FF);
+		std::string data((char*)packet + 2 + topic_length + 2, data_length);
+		std::unordered_map<std::string, std::vector<LNCFHandler*>*>::const_iterator h = _handlers.find(topic);
+		if (h != _handlers.end()) {
+			for (LNCFHandler* handler : *h->second) {
+				if (handler == nullptr) {
+					continue;
+				}
+				handler->Handle(topic, data);
+			}
 		}
 	}
 }
