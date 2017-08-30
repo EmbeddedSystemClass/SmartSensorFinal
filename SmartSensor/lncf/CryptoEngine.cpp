@@ -91,11 +91,11 @@ namespace lncf {
 	std::tuple<byte*, size_t> CryptoEngine::AESEncrypt(byte* message, size_t message_size, std::string& keyFingerprint, unsigned char* iv)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
-			throw std::exception(std::string("Key unknown"));
+			throw std::logic_error(std::string("Key unknown"));
 		}
 
 		if (message_size % AES::BLOCKSIZE != 0) {
-			throw std::exception(std::string("Invalid message length"));
+			throw std::logic_error(std::string("Invalid message length"));
 		}
 
 		byte* output = new byte[message_size];
@@ -108,7 +108,7 @@ namespace lncf {
 	std::tuple<byte*, size_t> CryptoEngine::AESEncrypt(byte* message, size_t message_size, byte* key, size_t keyLength, unsigned char* iv)
 	{
 		if (message_size % AES::BLOCKSIZE != 0) {
-			throw std::exception(std::string("Invalid message length"));
+			throw std::logic_error(std::string("Invalid message length"));
 		}
 
 		byte* output = new byte[message_size];
@@ -170,7 +170,7 @@ namespace lncf {
 	std::tuple<byte*, size_t> CryptoEngine::AESDecrypt(byte* message, size_t message_size, std::string& keyFingerprint, byte* iv)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
-			throw std::exception(std::string("Key unknown"));
+			throw std::logic_error(std::string("Key unknown"));
 		}
 
 		byte* output = new byte[message_size];
@@ -213,7 +213,7 @@ namespace lncf {
 				return std::make_tuple(false, nullptr, 0);
 			}
 		}
-		catch (std::exception e)
+		catch (std::logic_error e)
 		{
 			return std::make_tuple(false, nullptr, 0);
 		}
@@ -245,7 +245,7 @@ namespace lncf {
 	byte* CryptoEngine::HMAC_SHA1(std::string& keyFingerprint, byte* message, size_t message_size)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
-			throw std::exception(std::string("Key unknown"));
+			throw std::logic_error(std::string("Key unknown"));
 		}
 
 		byte* output = new byte[CryptoPP::SHA256::DIGESTSIZE];
@@ -263,7 +263,7 @@ namespace lncf {
 	bool CryptoEngine::VerifyHMAC_SHA1(std::string& keyFingerprint, byte* message, size_t message_size)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
-			throw std::exception(std::string("Key unknown"));
+			throw std::logic_error(std::string("Key unknown"));
 		}
 
 		CryptoPP::HMAC<CryptoPP::SHA1> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
@@ -314,7 +314,7 @@ namespace lncf {
 	std::tuple<byte*, byte*> CryptoEngine::LNCF_KDF(byte* messageKey, size_t messageKeySize, std::string& keyFingerprint)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
-			throw std::exception(std::string("Key unknown"));
+			throw std::logic_error(std::string("Key unknown"));
 		}
 
 		CryptoPP::SecByteBlock key = _keys[keyFingerprint];
