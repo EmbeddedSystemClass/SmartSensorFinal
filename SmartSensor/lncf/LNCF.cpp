@@ -73,11 +73,11 @@ namespace lncf {
 			throw std::exception("Topic is too long");
 		}
 		//9 bytes is the minimum size of a packet without data
-		if (message.length() > MAX_LENGTH - 9) {
+		if (topic.length() + message.length() + 8 > MAX_LENGTH) {
 			throw std::exception("Data is too long");
 		}
 
-		size_t packet_length = topic.length() + message.length() + 8;
+		long packet_length = topic.length() + message.length() + 8;
 		unsigned char* packet = new unsigned char[packet_length];
 		packet[0] = 0;
 		packet[1] = (topic.length() & 0x000000FF);
@@ -89,22 +89,63 @@ namespace lncf {
 
 		memcpy_s((void*)(packet + 2 + topic.length() + 2), packet_length, message.c_str(), message.length());
 
-		int32_t crc32 = CryptoEngine::CRC32((byte*)packet, 2 + topic.length() + 2 + message.length());
+		int32_t crc32 = CryptoEngine::Instance()->CRC32((byte*)packet, 2 + topic.length() + 2 + message.length());
 		packet[2 + topic.length() + 1 + message.length() + 1] = (crc32 & 0xFF000000) >> 24;
 		packet[2 + topic.length() + 1 + message.length() + 2] = (crc32 & 0x00FF0000) >> 16;
 		packet[2 + topic.length() + 1 + message.length() + 3] = (crc32 & 0x0000FF00) >> 8;
 		packet[2 + topic.length() + 1 + message.length() + 4] = (crc32 & 0x000000FF);
 
-		size_t bytes_send = _socket->send_to(boost::asio::buffer(packet, topic.length() + message.length() + 8), *_sender_endpoint);
+		size_t bytes_send = _socket->send_to(boost::asio::buffer(packet, packet_length), *_sender_endpoint);
 
 		delete[] packet;
 	}
 
 	void LNCF::SendEncryptedMessage(std::string& topic, std::string& message, std::string& key_fingerprint)
 	{
-		/*byte* packet;
-		_socket->async_send_to(asio::buffer(packet), *_sender_endpoint, boost::bind(handle_send_to, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred, topic, message, packet));
-		*/
+		if (topic.length() > 255) {
+			throw std::exception("Topic is too long");
+		}
+		//9 bytes is the minimum size of a packet without data
+		if (topic.length() + message.length() + 8 > MAX_LENGTH) {
+			throw std::exception("Data is too long");
+		}
+
+		long dataLength = topic.length() + message.length() + 4;
+		unsigned char* dataToEncrypt = new unsigned char[dataLength];
+		dataToEncrypt[0] = (topic.length() & 0x000000FF);
+		memcpy_s((void*)(dataToEncrypt + 2), dataLength, topic.data(), topic.length());
+		dataToEncrypt[1 + topic.length()] = (message.length() & 0x0000FF00) >> 8;
+		dataToEncrypt[1 + topic.length() + 1] = message.length() & 0x000000FF;
+		memcpy_s((void*)(dataToEncrypt + 2 + topic.length() + 2), dataLength, message.data(), message.length());
+
+		bool success;
+		byte* encryptedPacket;
+		size_t encryptedLength;
+		std::tie(success,encryptedPacket,encryptedLength) = CryptoEngine::Instance()->LNCFEncrypt(dataToEncrypt, dataLength, key_fingerprint);
+
+		if (success) {
+			long packet_length = encryptedLength + 7;
+			unsigned char* packet = new unsigned char[packet_length];
+			packet[0] = 0b00000010;
+			packet[1] = (encryptedLength & 0x0000FF00) >> 8;
+			packet[2] = encryptedLength & 0x000000FF;
+
+			memcpy_s((void*)(packet + 2), packet_length, encryptedPacket, encryptedLength);
+
+			int32_t crc32 = CryptoEngine::Instance()->CRC32((byte*)packet, packet_length - 4);
+			packet[2 + encryptedLength] = (crc32 & 0xFF000000) >> 24;
+			packet[2 + encryptedLength + 1] = (crc32 & 0x00FF0000) >> 16;
+			packet[2 + encryptedLength + 2] = (crc32 & 0x0000FF00) >> 8;
+			packet[2 + encryptedLength + 3] = (crc32 & 0x000000FF);
+
+			size_t bytes_send = _socket->send_to(boost::asio::buffer(packet, packet_length), *_sender_endpoint);
+
+			delete[] packet;
+
+		}
+
+		delete[] dataToEncrypt;
+		delete encryptedPacket;
 	}
 
 	void LNCF::SendDiscoveryRequest(std::string& request)
@@ -135,12 +176,17 @@ namespace lncf {
 
 	std::string LNCF::RegisterEncryptionKey(unsigned char* key)
 	{
-		return CryptoEngine::RegisterKey(key, KEY_LENGTH);
+		return CryptoEngine::Instance()->RegisterKey(key, KEY_LENGTH);
+	}
+
+	std::string LNCF::GenerateEncryptionKey()
+	{
+		return CryptoEngine::Instance()->GenerateKey();
 	}
 
 	void LNCF::RemoveEncryptionKey(std::string& keyFingerprint)
 	{
-		CryptoEngine::UnregisterKey(keyFingerprint);
+		CryptoEngine::Instance()->UnregisterKey(keyFingerprint);
 	}
 
 	void LNCF::handle_receive_from(boost::system::error_code error, size_t bytes_recvd)
@@ -151,7 +197,7 @@ namespace lncf {
 		}
 
 		//Check CRC32
-		int32_t crc = CryptoEngine::CRC32((byte*)_data, bytes_recvd - 4);
+		int32_t crc = CryptoEngine::Instance()->CRC32((byte*)_data, bytes_recvd - 4);
 		int32_t receivedCRC = (((int)_data[bytes_recvd - 4]) & 0x000000FF) << 24 | 
 							  (((int)_data[bytes_recvd - 3]) & 0x000000FF) << 16 | 
 							  (((int)_data[bytes_recvd - 2]) & 0x000000FF) << 8 |
@@ -181,7 +227,7 @@ namespace lncf {
 			size_t packetLength;
 			bool isOK = false;
 
-			std::tie(isOK, packet,packetLength) = CryptoEngine::LNCFDecrypt((byte*)_data + 3, data_length);
+			std::tie(isOK, packet,packetLength) = CryptoEngine::Instance()->LNCFDecrypt((byte*)_data + 3, data_length);
 
 			if (isOK) {
 				handle_message_v1(packet, packetLength);
@@ -202,7 +248,7 @@ namespace lncf {
 	{
 		int16_t topic_length = packet[1];
 		std::string topic((char*)packet + 2, (size_t)topic_length);
-		int16_t data_length = (((int16_t)packet[2 + topic_length]) & 0x00FF) << 8 | (((int16_t)packet[2 + topic_length + 1]) & 0x00FF);
+		int data_length = (((int16_t)packet[2 + topic_length]) & 0x00FF) << 8 | (((int16_t)packet[2 + topic_length + 1]) & 0x00FF);
 		std::string data((char*)packet + 2 + topic_length + 2, data_length);
 		std::unordered_map<std::string, std::vector<LNCFHandler*>*>::const_iterator h = _handlers.find(topic);
 		if (h != _handlers.end()) {

@@ -5,7 +5,12 @@
 
 namespace lncf {
 
-	std::unordered_map<std::string, CryptoPP::SecByteBlock> CryptoEngine::_keys;
+	CryptoEngine* CryptoEngine::_me;
+
+	CryptoEngine::CryptoEngine() : _random()
+	{
+		
+	}
 
 	std::string CryptoEngine::GenerateKeyFingerprint(CryptoPP::SecByteBlock key)
 	{
@@ -28,6 +33,16 @@ namespace lncf {
 		}
 
 		return encoded;
+	}
+
+	lncf::CryptoEngine* CryptoEngine::Instance()
+	{
+		if (_me == nullptr) {
+			_me = new CryptoEngine();
+			_me->Init();
+		}
+
+		return _me;
 	}
 
 	std::string CryptoEngine::RegisterKey(unsigned char* key, std::size_t keyLength)
@@ -90,9 +105,66 @@ namespace lncf {
 		return std::make_tuple(output, message_size);
 	}
 
-	std::tuple<std::string, std::string> CryptoEngine::LNCFEncrypt(byte* packet, size_t packet_size)
+	std::tuple<byte*, size_t> CryptoEngine::AESEncrypt(byte* message, size_t message_size, byte* key, size_t keyLength, unsigned char* iv)
 	{
-			
+		if (message_size % AES::BLOCKSIZE != 0) {
+			throw std::exception("Invalid message length");
+		}
+
+		byte* output = new byte[message_size];
+		CryptoPP::CBC_Mode<AES>::Encryption cbcEncryption(key, keyLength, iv);
+		cbcEncryption.ProcessData(output, message, message_size);
+
+		return std::make_tuple(output, message_size);
+	}
+
+	std::tuple<bool, byte*, size_t> CryptoEngine::LNCFEncrypt(byte* packet, size_t packet_size, std::string& keyFingerprint)
+	{
+		if (_keys.find(keyFingerprint) == _keys.end()) {
+			return std::make_tuple(false, nullptr, 0);
+		}
+	
+		int paddingSize = CryptoPP::AES::BLOCKSIZE + (CryptoPP::AES::BLOCKSIZE - (packet_size + 2) % CryptoPP::AES::BLOCKSIZE);
+		unsigned char* data = new unsigned char[packet_size + 2 + paddingSize];
+
+		_random.GenerateBlock(data + 2, paddingSize);
+
+		data[0] = (packet_size & 0x0000FF00) >> 8;
+		data[1] = packet_size & 0x000000FF;
+
+		memcpy_s(data + 2 + paddingSize, packet_size + 2 + paddingSize, packet, packet_size);
+
+		//KDF
+		byte* msg_key = SHA1(data, packet_size + 2 + paddingSize);
+		byte* aes_key;
+		byte* aes_iv;
+		std::tie(aes_key,aes_iv) = LNCF_KDF(msg_key, MSG_KEY_SIZE, keyFingerprint);
+		
+		//Encryption
+		byte* encrypted;
+		size_t encryptedLength;
+		std::tie(encrypted,encryptedLength) = AESEncrypt(data, packet_size + 2 + paddingSize, aes_key, KEY_LENGTH, aes_iv);
+		
+		//Preparation before return
+		int finalDataSize = encryptedLength + CryptoPP::SHA1::DIGESTSIZE + keyFingerprint.length() + MSG_KEY_SIZE;
+		unsigned char* finalPacket = new unsigned char[finalDataSize];
+		memcpy_s(finalPacket, finalDataSize, keyFingerprint.data(), keyFingerprint.size());
+		memcpy_s(finalPacket + keyFingerprint.length(), finalDataSize, msg_key, MSG_KEY_SIZE);
+		memcpy_s(finalPacket + keyFingerprint.length() + MSG_KEY_SIZE, finalDataSize, encrypted, encryptedLength);
+
+		//HMAC
+		byte* hmac = HMAC_SHA1(keyFingerprint, finalPacket, finalDataSize - CryptoPP::SHA1::DIGESTSIZE);
+		memcpy_s(finalPacket + keyFingerprint.length() + MSG_KEY_SIZE + encryptedLength, finalDataSize, hmac, CryptoPP::SHA1::DIGESTSIZE);
+
+		//CLeanup
+		delete hmac;
+		delete encrypted;
+		delete[] data;
+		delete[] msg_key;
+		delete[]aes_key;
+		delete[]aes_iv;
+
+		return std::make_tuple(true,finalPacket,finalDataSize);
 	}
 
 	std::tuple<byte*, size_t> CryptoEngine::AESDecrypt(byte* message, size_t message_size, std::string& keyFingerprint, byte* iv)
@@ -113,7 +185,7 @@ namespace lncf {
 		std::string keyFingerprint((char*)packet, KEY_FINGERPRINT_SIZE);
 		try
 		{
-			if (VerifyHMAC256(keyFingerprint, packet, packet_size)) {
+			if (VerifyHMAC_SHA1(keyFingerprint, packet, packet_size)) {
 				byte* msgKey = new byte[MSG_KEY_SIZE];
 				memcpy_s(msgKey, MSG_KEY_SIZE, packet + KEY_FINGERPRINT_SIZE, MSG_KEY_SIZE);
 	
@@ -170,31 +242,31 @@ namespace lncf {
 		return output;
 	}
 
-	byte* CryptoEngine::HMAC256(std::string& keyFingerprint, byte* message, size_t message_size)
+	byte* CryptoEngine::HMAC_SHA1(std::string& keyFingerprint, byte* message, size_t message_size)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
 			throw std::exception("Key unknown");
 		}
 
 		byte* output = new byte[CryptoPP::SHA256::DIGESTSIZE];
-		CryptoPP::HMAC<CryptoPP::SHA256> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
+		CryptoPP::HMAC<CryptoPP::SHA1> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
 
 		CryptoPP::ArraySource ss2(message,message_size, true,
 			new CryptoPP::HashFilter(hmac,
-				new CryptoPP::ArraySink(output, CryptoPP::SHA256::DIGESTSIZE)
+				new CryptoPP::ArraySink(output, CryptoPP::SHA1::DIGESTSIZE)
 			) // HashFilter      
 		); // StringSource
 
 		return output;
 	}
 
-	bool CryptoEngine::VerifyHMAC256(std::string& keyFingerprint, byte* message, size_t message_size)
+	bool CryptoEngine::VerifyHMAC_SHA1(std::string& keyFingerprint, byte* message, size_t message_size)
 	{
 		if (_keys.find(keyFingerprint) == _keys.end()) {
 			throw std::exception("Key unknown");
 		}
 
-		CryptoPP::HMAC<CryptoPP::SHA256> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
+		CryptoPP::HMAC<CryptoPP::SHA1> hmac(_keys[keyFingerprint], _keys[keyFingerprint].size());
 
 		bool result = false;
 		CryptoPP::ArraySource ss(message, message_size, true,
@@ -241,7 +313,53 @@ namespace lncf {
 
 	std::tuple<byte*, byte*> CryptoEngine::LNCF_KDF(byte* messageKey, size_t messageKeySize, std::string& keyFingerprint)
 	{
+		if (_keys.find(keyFingerprint) == _keys.end()) {
+			throw std::exception("Key unknown");
+		}
 
-		return std::make_tuple(nullptr, nullptr);
+		CryptoPP::SecByteBlock key = _keys[keyFingerprint];
+		unsigned char* tempBuffer = new unsigned char[24];
+
+		memcpy_s(tempBuffer, 20, messageKey, messageKeySize);
+		memcpy_s(tempBuffer + messageKeySize, 20, key.data(), 4);
+		byte* sha1_a = SHA1(tempBuffer, 20);
+
+		memcpy_s(tempBuffer, 20, key.data() + 4, 2);
+		memcpy_s(tempBuffer + 2, 20, messageKey, messageKeySize);
+		memcpy_s(tempBuffer + 2 + messageKeySize, 20, key.data() + 6, 2);
+		byte* sha1_b = SHA1(tempBuffer, 20);
+
+		memcpy_s(tempBuffer, 20, key.data() + 8, 4);
+		memcpy_s(tempBuffer + 4, 20, messageKey, messageKeySize);
+		byte* sha1_c = SHA1(tempBuffer, 20);
+
+		memcpy_s(tempBuffer, 20, messageKey, messageKeySize);
+		memcpy_s(tempBuffer + messageKeySize, 20, key.data() + 12, 4);
+		byte* sha1_d = SHA1(tempBuffer, 20);
+		byte* aes_key = new byte[KEY_LENGTH];
+		byte* aes_iv = new byte[CryptoPP::AES::BLOCKSIZE];
+
+		//AES Key gen
+		memcpy_s(aes_key, KEY_LENGTH, sha1_a, 4);
+		memcpy_s(aes_key+ 4, KEY_LENGTH, sha1_b, 8);
+		memcpy_s(aes_key + 4 + 8, KEY_LENGTH, sha1_c + 4, 4);
+
+		//AES IV gen
+		memcpy_s(aes_iv, CryptoPP::AES::BLOCKSIZE, sha1_a + 12, 4);
+		memcpy_s(aes_iv + 4, CryptoPP::AES::BLOCKSIZE, sha1_b + 12, 8);
+		memcpy_s(aes_iv + 4 + 8, CryptoPP::AES::BLOCKSIZE, sha1_d, 4);
+
+		delete sha1_a;
+		delete sha1_b;
+		delete sha1_c;
+		delete sha1_d;
+		delete[] tempBuffer;
+		return std::make_tuple(aes_key, aes_iv);
 	}
+
+	void CryptoEngine::Init()
+	{
+
+	}
+
 }

@@ -34,6 +34,7 @@ namespace lncf {
 		void RemoveHandler(std::string topic, LNCFHandler* handler);
 
 		std::string RegisterEncryptionKey(unsigned char* key);
+		std::string GenerateEncryptionKey();
 		void RemoveEncryptionKey(std::string& keyFingerprint);
 
 	private:

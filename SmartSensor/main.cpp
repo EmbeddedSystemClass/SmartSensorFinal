@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <vector>
 #include <ctime>
 #include <iostream>
 
@@ -60,21 +61,71 @@ int main() {
 	return EXIT_SUCCESS;
 }
 
+void generateDataTest(std::vector<std::string>* datas) {
+	if (datas == nullptr) {
+		return;
+	}
+
+	int size = 16;
+	while (size < 65536) {
+		char* data = new char[size];
+		cpy_rand_str(data, size-1);
+		std::string message(data, size);
+		datas->push_back(message);
+		size *= 2;
+	}	
+}
+
 void senderTest(lncf::LNCF* lncf) {
+	std::vector<std::string> dataTest;
+	generateDataTest(&dataTest);
 	std::string topic("TOTO");
-	char* data = new char[30720];
-	cpy_rand_str(data, 30719);
-	std::string message(data, 30720);
+	std::unordered_map<long, boost::posix_time::time_duration> clearResults;
+	std::unordered_map<long, boost::posix_time::time_duration> cryptedResults;
 
 	unsigned long numberOfSend = 0;
-	boost::posix_time::ptime t1(boost::posix_time::microsec_clock::local_time());
-
-	for(int i = 0; i < 10000; i++) {
-		lncf->SendClearMessage(topic, message);
-		numberOfSend++;
-	}
-	boost::posix_time::ptime t2(boost::posix_time::microsec_clock::local_time());
-	boost::posix_time::time_duration dt = t2 - t1;
 	
-	std::cout << "Time : " << dt.total_milliseconds() << std::endl;
+	for (std::vector<std::string>::iterator it = dataTest.begin(); it != dataTest.end(); it++) {
+		try
+		{
+			std::string message = *it;
+			boost::posix_time::ptime t1(boost::posix_time::microsec_clock::local_time());
+			for (int i = 0; i < 10000; i++) {
+				lncf->SendClearMessage(topic, message);
+				numberOfSend++;
+			}
+			boost::posix_time::ptime t2(boost::posix_time::microsec_clock::local_time());
+			boost::posix_time::time_duration dt = t2 - t1;
+			clearResults[message.length()] = dt;
+			std::cout << "Time for " << message.length() << " bytes unencrypted : " << dt.total_milliseconds() << " ms" << std::endl;
+		}
+		catch (const std::exception& e)
+		{
+			std::cout << e.what() << std::endl;
+		}
+	}
+
+	std::string fingerprint = lncf->GenerateEncryptionKey();
+
+	for (std::vector<std::string>::iterator it = dataTest.begin(); it != dataTest.end(); it++) {
+		try
+		{
+			std::string message = *it;
+			boost::posix_time::ptime t1(boost::posix_time::microsec_clock::local_time());
+			for (int i = 0; i < 10000; i++) {
+				lncf->SendEncryptedMessage(topic, message,fingerprint);
+				numberOfSend++;
+			}
+			boost::posix_time::ptime t2(boost::posix_time::microsec_clock::local_time());
+			boost::posix_time::time_duration dt = t2 - t1;
+			cryptedResults[message.length()] = dt;
+			std::cout << "Time for " << message.length() << " bytes encrypted : " << dt.total_milliseconds() << " ms" << std::endl;
+		}
+		catch (const std::exception& e)
+		{
+			std::cout << e.what() << std::endl;
+		}
+	}
+
+
 }
