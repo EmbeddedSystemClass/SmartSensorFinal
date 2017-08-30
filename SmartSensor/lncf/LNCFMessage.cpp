@@ -9,7 +9,7 @@ LNCFMessage::LNCFMessage(unsigned char* data, size_t length)
 		memcpy(_message, data, length);
 	}
 	else {
-		throw std::exception("Message cannot be empty");
+		throw std::logic_error("Message cannot be empty");
 	}
 }
 

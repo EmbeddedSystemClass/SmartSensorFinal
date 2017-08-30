@@ -1,6 +1,8 @@
 #ifndef _ENCRYPTION_ENGINE_H_
 #define _ENCRYPTION_ENGINE_H_
 
+#define __STDC_WANT_LIB_EXT1__ 1
+
 #include <iostream>
 #include <unordered_map>
 #include <memory>

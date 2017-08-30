@@ -1,6 +1,8 @@
 #ifndef _LNCF_H_
 #define _LNCF_H_
 
+#define __STDC_WANT_LIB_EXT1__ 1
+
 #include <unordered_map>
 #include <queue>
 #include <condition_variable>

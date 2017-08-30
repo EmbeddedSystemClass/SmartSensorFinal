@@ -1,5 +1,5 @@
 #pragma once
-#include "lncf\LNCFHandler.h"
+#include "lncf/LNCFHandler.h"
 
 class MyHandler : public lncf::LNCFHandler
 {
