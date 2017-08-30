@@ -2,6 +2,7 @@
 #include <vector>
 #include <ctime>
 #include <iostream>
+#include <fstream>
 
 #include <boost/thread.hpp>
 
@@ -80,8 +81,8 @@ void senderTest(lncf::LNCF* lncf) {
 	std::vector<std::string> dataTest;
 	generateDataTest(&dataTest);
 	std::string topic("TOTO");
-	std::unordered_map<long, boost::posix_time::time_duration> clearResults;
-	std::unordered_map<long, boost::posix_time::time_duration> cryptedResults;
+	std::map<long, boost::posix_time::time_duration> clearResults;
+	std::map<long, boost::posix_time::time_duration> cryptedResults;
 
 	unsigned long numberOfSend = 0;
 	
@@ -127,5 +128,33 @@ void senderTest(lncf::LNCF* lncf) {
 		}
 	}
 
+	std::ofstream outputFile("encrypted.csv");
+	if (outputFile)
+	{
+		outputFile << "Size" << ',' << "Time" << std::endl;
+		for (auto data : cryptedResults) {
+			outputFile << data.first << ',' << data.second.total_milliseconds() << std::endl;
+		}
+		outputFile.flush();
+		outputFile.close();
+	}
+	else
+	{
+		std::cerr << "Failure opening " << "encrypted.csv" << '\n';
+	}
 
+	std::ofstream outputClearFile("clear.csv");
+	if (outputClearFile)
+	{
+		outputClearFile << "Size" << ',' << "Time" << std::endl;
+		for (auto data : clearResults) {
+			outputClearFile << data.first << ',' << data.second.total_milliseconds() << std::endl;
+		}
+		outputClearFile.flush();
+		outputClearFile.close();
+	}
+	else
+	{
+		std::cerr << "Failure opening " << "clear.csv" << '\n';
+	}
 }
