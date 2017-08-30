@@ -70,11 +70,11 @@ namespace lncf {
 	void LNCF::SendClearMessage(std::string& topic, std::string& message)
 	{
 		if (topic.length() > 255) {
-			throw std::exception("Topic is too long");
+			throw std::exception(std::string("Topic is too long"));
 		}
 		//9 bytes is the minimum size of a packet without data
 		if (topic.length() + message.length() + 8 > MAX_LENGTH) {
-			throw std::exception("Data is too long");
+			throw std::exception(std::string("Data is too long"));
 		}
 
 		long packet_length = topic.length() + message.length() + 8;
@@ -103,11 +103,11 @@ namespace lncf {
 	void LNCF::SendEncryptedMessage(std::string& topic, std::string& message, std::string& key_fingerprint)
 	{
 		if (topic.length() > 255) {
-			throw std::exception("Topic is too long");
+			throw std::exception(std::string("Topic is too long"));
 		}
 		//9 bytes is the minimum size of a packet without data
 		if (topic.length() + message.length() + 8 > MAX_LENGTH) {
-			throw std::exception("Data is too long");
+			throw std::exception(std::string("Data is too long"));
 		}
 
 		long dataLength = topic.length() + message.length() + 4;
