@@ -132,7 +132,7 @@ namespace lncf {
 		data[0] = (packet_size & 0x0000FF00) >> 8;
 		data[1] = packet_size & 0x000000FF;
 
-		memcpy_s(data + 2 + paddingSize, packet_size + 2 + paddingSize, packet, packet_size);
+		std::memcpy(data + 2 + paddingSize, packet, packet_size);
 
 		//KDF
 		byte* msg_key = SHA1(data, packet_size + 2 + paddingSize);
@@ -148,13 +148,13 @@ namespace lncf {
 		//Preparation before return
 		int finalDataSize = encryptedLength + CryptoPP::SHA1::DIGESTSIZE + keyFingerprint.length() + MSG_KEY_SIZE;
 		unsigned char* finalPacket = new unsigned char[finalDataSize];
-		memcpy_s(finalPacket, finalDataSize, keyFingerprint.data(), keyFingerprint.size());
-		memcpy_s(finalPacket + keyFingerprint.length(), finalDataSize, msg_key, MSG_KEY_SIZE);
-		memcpy_s(finalPacket + keyFingerprint.length() + MSG_KEY_SIZE, finalDataSize, encrypted, encryptedLength);
+		std::memcpy(finalPacket, keyFingerprint.data(), keyFingerprint.size());
+		std::memcpy(finalPacket + keyFingerprint.length(), msg_key, MSG_KEY_SIZE);
+		std::memcpy(finalPacket + keyFingerprint.length() + MSG_KEY_SIZE, encrypted, encryptedLength);
 
 		//HMAC
 		byte* hmac = HMAC_SHA1(keyFingerprint, finalPacket, finalDataSize - CryptoPP::SHA1::DIGESTSIZE);
-		memcpy_s(finalPacket + keyFingerprint.length() + MSG_KEY_SIZE + encryptedLength, finalDataSize, hmac, CryptoPP::SHA1::DIGESTSIZE);
+		std::memcpy(finalPacket + keyFingerprint.length() + MSG_KEY_SIZE + encryptedLength, hmac, CryptoPP::SHA1::DIGESTSIZE);
 
 		//CLeanup
 		delete hmac;
@@ -187,7 +187,7 @@ namespace lncf {
 		{
 			if (VerifyHMAC_SHA1(keyFingerprint, packet, packet_size)) {
 				byte* msgKey = new byte[MSG_KEY_SIZE];
-				memcpy_s(msgKey, MSG_KEY_SIZE, packet + KEY_FINGERPRINT_SIZE, MSG_KEY_SIZE);
+				std::memcpy(msgKey, packet + KEY_FINGERPRINT_SIZE, MSG_KEY_SIZE);
 	
 				byte* aesKey = new byte[KEY_LENGTH];
 				byte* aesIV = new byte[CryptoPP::AES::BLOCKSIZE];
@@ -320,34 +320,34 @@ namespace lncf {
 		CryptoPP::SecByteBlock key = _keys[keyFingerprint];
 		unsigned char* tempBuffer = new unsigned char[24];
 
-		memcpy_s(tempBuffer, 20, messageKey, messageKeySize);
-		memcpy_s(tempBuffer + messageKeySize, 20, key.data(), 4);
+		std::memcpy(tempBuffer, messageKey, messageKeySize);
+		std::memcpy(tempBuffer + messageKeySize, key.data(), 4);
 		byte* sha1_a = SHA1(tempBuffer, 20);
 
-		memcpy_s(tempBuffer, 20, key.data() + 4, 2);
-		memcpy_s(tempBuffer + 2, 20, messageKey, messageKeySize);
-		memcpy_s(tempBuffer + 2 + messageKeySize, 20, key.data() + 6, 2);
+		std::memcpy(tempBuffer, key.data() + 4, 2);
+		std::memcpy(tempBuffer + 2, messageKey, messageKeySize);
+		std::memcpy(tempBuffer + 2 + messageKeySize, key.data() + 6, 2);
 		byte* sha1_b = SHA1(tempBuffer, 20);
 
-		memcpy_s(tempBuffer, 20, key.data() + 8, 4);
-		memcpy_s(tempBuffer + 4, 20, messageKey, messageKeySize);
+		std::memcpy(tempBuffer, key.data() + 8, 4);
+		std::memcpy(tempBuffer + 4, messageKey, messageKeySize);
 		byte* sha1_c = SHA1(tempBuffer, 20);
 
-		memcpy_s(tempBuffer, 20, messageKey, messageKeySize);
-		memcpy_s(tempBuffer + messageKeySize, 20, key.data() + 12, 4);
+		std::memcpy(tempBuffer, messageKey, messageKeySize);
+		std::memcpy(tempBuffer + messageKeySize, key.data() + 12, 4);
 		byte* sha1_d = SHA1(tempBuffer, 20);
 		byte* aes_key = new byte[KEY_LENGTH];
 		byte* aes_iv = new byte[CryptoPP::AES::BLOCKSIZE];
 
 		//AES Key gen
-		memcpy_s(aes_key, KEY_LENGTH, sha1_a, 4);
-		memcpy_s(aes_key+ 4, KEY_LENGTH, sha1_b, 8);
-		memcpy_s(aes_key + 4 + 8, KEY_LENGTH, sha1_c + 4, 4);
+		std::memcpy(aes_key, sha1_a, 4);
+		std::memcpy(aes_key+ 4, sha1_b, 8);
+		std::memcpy(aes_key + 4 + 8, sha1_c + 4, 4);
 
 		//AES IV gen
-		memcpy_s(aes_iv, CryptoPP::AES::BLOCKSIZE, sha1_a + 12, 4);
-		memcpy_s(aes_iv + 4, CryptoPP::AES::BLOCKSIZE, sha1_b + 12, 8);
-		memcpy_s(aes_iv + 4 + 8, CryptoPP::AES::BLOCKSIZE, sha1_d, 4);
+		std::memcpy(aes_iv, sha1_a + 12, 4);
+		std::memcpy(aes_iv + 4, sha1_b + 12, 8);
+		std::memcpy(aes_iv + 4 + 8, sha1_d, 4);
 
 		delete sha1_a;
 		delete sha1_b;

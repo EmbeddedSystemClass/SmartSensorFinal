@@ -82,12 +82,12 @@ namespace lncf {
 		packet[0] = 0;
 		packet[1] = (topic.length() & 0x000000FF);
 
-		memcpy_s((void*)(packet + 2), packet_length, topic.c_str(), topic.length());
+		std::memcpy((void*)(packet + 2), topic.c_str(), topic.length());
 
 		packet[2 + topic.length()] = (message.length() & 0x0000FF00) >> 8;
 		packet[2 + topic.length() + 1] = message.length() & 0x000000FF;
 
-		memcpy_s((void*)(packet + 2 + topic.length() + 2), packet_length, message.c_str(), message.length());
+		std::memcpy((void*)(packet + 2 + topic.length() + 2), message.c_str(), message.length());
 
 		int32_t crc32 = CryptoEngine::Instance()->CRC32((byte*)packet, 2 + topic.length() + 2 + message.length());
 		packet[2 + topic.length() + 1 + message.length() + 1] = (crc32 & 0xFF000000) >> 24;
@@ -113,10 +113,10 @@ namespace lncf {
 		long dataLength = topic.length() + message.length() + 4;
 		unsigned char* dataToEncrypt = new unsigned char[dataLength];
 		dataToEncrypt[0] = (topic.length() & 0x000000FF);
-		memcpy_s((void*)(dataToEncrypt + 2), dataLength, topic.data(), topic.length());
+		std::memcpy((void*)(dataToEncrypt + 2), topic.data(), topic.length());
 		dataToEncrypt[1 + topic.length()] = (message.length() & 0x0000FF00) >> 8;
 		dataToEncrypt[1 + topic.length() + 1] = message.length() & 0x000000FF;
-		memcpy_s((void*)(dataToEncrypt + 2 + topic.length() + 2), dataLength, message.data(), message.length());
+		std::memcpy((void*)(dataToEncrypt + 2 + topic.length() + 2), message.data(), message.length());
 
 		bool success;
 		byte* encryptedPacket;
@@ -130,7 +130,7 @@ namespace lncf {
 			packet[1] = (encryptedLength & 0x0000FF00) >> 8;
 			packet[2] = encryptedLength & 0x000000FF;
 
-			memcpy_s((void*)(packet + 2), packet_length, encryptedPacket, encryptedLength);
+			std::memcpy((void*)(packet + 2), encryptedPacket, encryptedLength);
 
 			int32_t crc32 = CryptoEngine::Instance()->CRC32((byte*)packet, packet_length - 4);
 			packet[2 + encryptedLength] = (crc32 & 0xFF000000) >> 24;
