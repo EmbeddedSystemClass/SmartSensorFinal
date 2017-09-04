@@ -38,7 +38,7 @@ int main() {
 
 	MyHandler handler;
 	lncf::LNCF lncf(&service);
-	lncf.Init(boost::asio::ip::address::from_string("0.0.0.0"), boost::asio::ip::address::from_string("224.0.0.1"), 6666);
+	lncf.Init(boost::asio::ip::address::from_string("0.0.0.0"), boost::asio::ip::address::from_string("224.1.1.1"), 6666);
 	lncf.Handle("TOTO", &handler);
 	lncf.ListenAndServe();
 
@@ -50,7 +50,7 @@ int main() {
 	std::string request;
 	std::getline(std::cin, request);
 
-	std::cout << handler.numberReceived << std::endl;
+	std::cout << lncf.packet_received << std::endl;
 
 	std::cout << "Begin shutdown procedure" << std::endl;
 	lncf.Stop();

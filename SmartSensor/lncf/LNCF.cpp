@@ -10,6 +10,7 @@
 namespace lncf {
 	LNCF::LNCF(boost::asio::io_service* service)
 	{
+		packet_received = 0;
 		_service = service;
 	}
 
@@ -28,12 +29,21 @@ namespace lncf {
 		}
 
 		//Clear the handlers list
-		for (std::pair<std::string,std::vector<LNCFHandler*>*> keyPair : _handlers) {
-			if (keyPair.second != nullptr) {
-				delete keyPair.second;
+		/*
+		try
+		{
+			for (std::pair<std::string, std::vector<LNCFHandler*>*> keyPair : _handlers) {
+				if (keyPair.second != nullptr) {
+					delete keyPair.second;
+				}
+				_handlers.erase(keyPair.first);
 			}
-			_handlers.erase(keyPair.first);
 		}
+		catch (const std::exception&)
+		{
+
+		}
+		*/
 	}
 
 	void LNCF::Init(boost::asio::ip::address listen_address, boost::asio::ip::address group_address, int lncf_port /*= 6666*/)
@@ -57,14 +67,20 @@ namespace lncf {
 		// Join the multi cast group.
 		_socket->set_option(boost::asio::ip::multicast::join_group(_send_addr));
 		//Start the async receive
-		_socket->async_receive_from(boost::asio::buffer(_data, MAX_LENGTH), *_sender_endpoint, boost::bind(&LNCF::handle_receive_from, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-
+		listen();
 	}
 
 	void LNCF::Stop()
 	{
-		_socket->shutdown(boost::asio::ip::udp::socket::shutdown_both);
-		_socket->close();
+		try
+		{
+			_socket->shutdown(boost::asio::ip::udp::socket::shutdown_both);
+			_socket->close();
+		}
+		catch (const std::exception&)
+		{
+
+		}
 	}
 
 	void LNCF::SendClearMessage(std::string& topic, std::string& message)
@@ -96,7 +112,6 @@ namespace lncf {
 		packet[2 + topic.length() + 1 + message.length() + 4] = (crc32 & 0x000000FF);
 
 		size_t bytes_send = _socket->send_to(boost::asio::buffer(packet, packet_length), *_sender_endpoint);
-
 		delete[] packet;
 	}
 
@@ -193,6 +208,7 @@ namespace lncf {
 	{
 		//Minimum packet size is 9 bytes (1 for options + 1 for topic length + 1 for minimum topic + 2 for data length + 4 for CRC)
 		if (bytes_recvd < 9) {
+			std::cout << "Corrupted packet" << std::endl;
 			return;
 		}
 
@@ -204,6 +220,7 @@ namespace lncf {
 							  (((int)_data[bytes_recvd - 1]) & 0x000000FF);
 
 		if (crc != receivedCRC) {
+			std::cout << "Corrupted packet" << std::endl;
 			return;
 		}
 
@@ -215,7 +232,8 @@ namespace lncf {
 		default:
 			break;
 		}
-		_socket->async_receive_from(boost::asio::buffer(_data, MAX_LENGTH), *_sender_endpoint, boost::bind(&LNCF::handle_receive_from, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+
+		listen();
 	}
 
 	void LNCF::parse_lncf_v1(size_t packet_size)
@@ -260,5 +278,12 @@ namespace lncf {
 			}
 		}
 	}
+
+	void LNCF::listen()
+	{
+		//_socket->async_receive_from(boost::asio::buffer(_data, MAX_LENGTH), *_sender_endpoint, boost::bind(&LNCF::handle_receive_from, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		_socket->async_receive(boost::asio::buffer(_data, MAX_LENGTH), 0, boost::bind(&LNCF::handle_receive_from, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+	}
+
 }
 

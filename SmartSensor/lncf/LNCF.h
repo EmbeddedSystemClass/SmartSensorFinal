@@ -36,7 +36,6 @@ namespace lncf {
 		std::string RegisterEncryptionKey(unsigned char* key);
 		std::string GenerateEncryptionKey();
 		void RemoveEncryptionKey(std::string& keyFingerprint);
-
 	private:
 		std::unordered_map<std::string, std::vector<LNCFHandler*>*> _handlers;
 		boost::asio::io_service* _service;
@@ -54,11 +53,15 @@ namespace lncf {
 		std::mutex _queueMutex;
 		std::condition_variable _messageAvaiable;
 
+		
+
 		void handle_receive_from(boost::system::error_code error, size_t bytes_recvd);
 
 		void parse_lncf_v1(size_t packet_size);
 
 		void handle_message_v1(unsigned char* packet, size_t packet_length);
+
+		void listen();
 	};
 }
 
