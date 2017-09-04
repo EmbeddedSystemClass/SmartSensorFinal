@@ -33,12 +33,18 @@ void cpy_rand_str(char *dest, int size) {
 	dest[size] = '\0';
 }
 
-int main() {
+int main(int argc, char **argv) {
+
+	if (argc != 3) {
+		std::cerr << "Usage : smartsensor GROUP_IP LISTEN_IP" << std::endl;
+		return EXIT_FAILURE;
+	}
+
 	boost::asio::io_service service;
 
 	MyHandler handler;
 	lncf::LNCF lncf(&service);
-	lncf.Init(boost::asio::ip::address::from_string("0.0.0.0"), boost::asio::ip::address::from_string("224.1.1.1"), 6666);
+	lncf.Init(boost::asio::ip::address::from_string(argv[2]), boost::asio::ip::address::from_string(argv[1]), 6666);
 	lncf.Handle("TOTO", &handler);
 	lncf.ListenAndServe();
 
