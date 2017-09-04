@@ -10,7 +10,6 @@
 namespace lncf {
 	LNCF::LNCF(boost::asio::io_service* service)
 	{
-		packet_received = 0;
 		_service = service;
 	}
 

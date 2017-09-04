@@ -50,7 +50,7 @@ int main() {
 	std::string request;
 	std::getline(std::cin, request);
 
-	std::cout << lncf.packet_received << std::endl;
+	std::cout << handler.numberReceived << std::endl;
 
 	std::cout << "Begin shutdown procedure" << std::endl;
 	lncf.Stop();
